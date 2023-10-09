@@ -14,6 +14,8 @@ import (
 	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
+	"strings"
+	"text/template"
 )
 
 type MainTfTemplate struct {
@@ -29,9 +31,10 @@ type PolicyTfTemplate struct {
 }
 
 const (
-	repo = iota
-	path
-	reviewer
+	repoTextInput = iota
+	pathTextInput
+	reviewerTextInput
+	deployTextInput
 )
 
 const (
@@ -41,6 +44,14 @@ const (
 	okta         = "https://github.com/abbeylabs/abbey-starter-kit-okta"
 	azure        = "https://github.com/abbeylabs/abbey-starter-kit-azure"
 	snowflake    = "https://github.com/abbeylabs/abbey-starter-kit-snowflake"
+)
+
+var (
+	reviewer     string
+	timeExpiry   string
+	accessOutput string
+	repo         string
+	azureUPN     string
 )
 
 var (
@@ -70,6 +81,9 @@ type model struct {
 	path           string
 	timeExpiry     string
 	reviewer       string
+	textReplaced   bool
+	deployed       string
+	accessOutput   string
 }
 
 func (m model) Init() tea.Cmd {
@@ -89,13 +103,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.exampleChoice = i.title
 				}
 			} else if m.repo == "" {
-				i := m.inputs[repo].Value()
+				i := m.inputs[repoTextInput].Value()
 				m.repo = i
 			} else if m.path == "" {
-				i := m.inputs[path].Value()
+				i := m.inputs[pathTextInput].Value()
 				m.path = i
 				var err error
-				if m.path == "" {
+				if m.path == "" || m.path == "." {
 					ex, err := os.Executable()
 					if err != nil {
 						panic(err)
@@ -103,8 +117,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.path = filepath.Dir(ex)
 				}
 
+				m.path = m.path + "/" + m.exampleChoice
 				url := "https://github.com/" + m.repo
-				_, err = git.PlainClone(m.path+"/"+m.exampleChoice, false, &git.CloneOptions{
+				_, err = git.PlainClone(m.path, false, &git.CloneOptions{
 					URL:      url,
 					Progress: os.Stdout,
 				})
@@ -118,9 +133,86 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.timeExpiry = i.title
 				}
 			} else if m.reviewer == "" {
-				i := m.inputs[reviewer].Value()
+				i := m.inputs[reviewerTextInput].Value()
 				m.reviewer = i
+			} else if m.deployed == "" {
+				i := m.inputs[deployTextInput].Value()
+				m.deployed = i
+				if strings.ToLower(m.deployed) == "yes" || strings.ToLower(m.deployed) == "y" {
+					repo, _ := git.PlainOpen(m.path)
+					worktree, _ := repo.Worktree()
+					_, _ = worktree.Add("main.tf")
+					_, _ = worktree.Add("policies/common/common.rego")
+
+					commit, _ := worktree.Commit("example go-git commit", &git.CommitOptions{})
+
+					_, _ = repo.CommitObject(commit)
+					//_ = repo.Push(&git.PushOptions{})
+				}
 			}
+		}
+
+		// if all fields are filled, replace the text in files
+		if m.timeExpiry != "" && m.reviewer != "" && m.repo != "" && m.path != "" && m.exampleChoice != "" {
+			mainFile := "main.tf"
+			files, err := template.New(mainFile).ParseFiles("cmd/templ/" + m.exampleChoice + "/main.tf")
+			if err != nil {
+				panic(err)
+			}
+
+			tmpl := template.Must(files, err)
+
+			if m.accessOutput == "" {
+				m.accessOutput = "github://" + m.repo + "/access.tf"
+			}
+
+			tfInput := MainTfTemplate{
+				Reviewer:     m.reviewer,
+				PolicyBundle: "github://" + m.repo + "/policies",
+				AccessOutput: m.accessOutput,
+				// hacky fix since Go recognizes this as a template value
+				AbbeyEmail: "{{ .data.system.abbey.identities.abbey.email }}",
+				AzureUPN:   azureUPN,
+			}
+
+			f, err := os.Create(m.path + "/" + mainFile)
+			if err != nil {
+				fmt.Println("create mainFile failed: ", err)
+			}
+
+			err = tmpl.Execute(f, tfInput)
+			if err != nil {
+				panic(err)
+			}
+
+			err = f.Close()
+			if err != nil {
+				panic(err)
+			}
+
+			policyFile := "common.rego"
+			tmpl = template.Must(template.New(policyFile).ParseFiles("cmd/templ/" + m.exampleChoice + "/" + policyFile))
+
+			policyTfInput := PolicyTfTemplate{
+				TimeExpiry: m.timeExpiry,
+			}
+
+			f, err = os.Create(m.path + "/policies/common/" + policyFile)
+			if err != nil {
+				fmt.Println("create policy file failed: ", err)
+			}
+
+			err = tmpl.Execute(f, policyTfInput)
+			if err != nil {
+				panic(err)
+			}
+
+			err = f.Close()
+			if err != nil {
+				panic(err)
+			}
+
+			m.textReplaced = true
 		}
 
 	case tea.WindowSizeMsg:
@@ -133,18 +225,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.exampleChoice == "" {
 		m.exampleList, cmd = m.exampleList.Update(msg)
 	} else if m.repo == "" {
-		m.inputs[repo], cmd = m.inputs[repo].Update(msg)
+		m.inputs[repoTextInput], cmd = m.inputs[repoTextInput].Update(msg)
 	} else if m.path == "" {
-		m.inputs[path], cmd = m.inputs[path].Update(msg)
+		m.inputs[pathTextInput], cmd = m.inputs[pathTextInput].Update(msg)
 	} else if m.timeExpiry == "" {
 		m.timeExpiryList, cmd = m.timeExpiryList.Update(msg)
 	} else if m.reviewer == "" {
-		m.inputs[reviewer], cmd = m.inputs[reviewer].Update(msg)
+		m.inputs[reviewerTextInput], cmd = m.inputs[reviewerTextInput].Update(msg)
+	} else if m.deployed == "" {
+		m.inputs[deployTextInput], cmd = m.inputs[deployTextInput].Update(msg)
 	}
 	return m, cmd
 }
-
-type statusMsg int
 
 func (m model) View() string {
 	if m.exampleChoice == "" {
@@ -156,7 +248,7 @@ func (m model) View() string {
 			url = quickstart
 		case "google-groups":
 			url = googleGroups
-		case "gcp-groups":
+		case "gcp-identity":
 			url = gcpIdentity
 		case "okta":
 			url = okta
@@ -168,30 +260,40 @@ func (m model) View() string {
 
 		output := docStyle.Render(fmt.Sprintf("Great! You've chosen %s to get started.", m.exampleChoice))
 		output += docStyle.Render(fmt.Sprintf("Navigate to %s to create a repo from the template in your own github account.", url))
+		output += docStyle.Render(fmt.Sprintf("The repo you created must be public."))
 		output += docStyle.Render(fmt.Sprintf(
 			"Once you've done that, enter the name of the repo you created: %s\n\n%s",
-			m.inputs[repo].View(),
-			"(ctrl-c to quit)",
+			m.inputs[repoTextInput].View(),
+			"",
 		) + "\n")
 		return wordwrap.String(output, m.exampleList.Width())
 	} else if m.path == "" {
-		m.inputs[path].Focus()
+		m.inputs[pathTextInput].Focus()
 		output := docStyle.Render(fmt.Sprintf(
 			"Enter in the path the repo will be cloned to, or leave empty to clone into current directory: %s\n\n%s",
-			m.inputs[path].View(),
-			"(ctrl-c to quit)",
+			m.inputs[pathTextInput].View(),
+			"",
 		) + "\n")
 		return wordwrap.String(output, m.exampleList.Width())
 	} else if m.timeExpiry == "" {
 		return docStyle.Render(m.timeExpiryList.View())
 	} else if m.reviewer == "" {
-		m.inputs[reviewer].Focus()
+		m.inputs[reviewerTextInput].Focus()
 		output := docStyle.Render(fmt.Sprintf(
 			"What's the email address you used for Abbey?\n\n%s\n\n%s",
-			m.inputs[reviewer].View(),
-			"(ctrl-c to quit)",
+			m.inputs[reviewerTextInput].View(),
+			"",
 		) + "\n")
 		return wordwrap.String(output, m.exampleList.Width())
+	} else if m.deployed == "" {
+		m.inputs[deployTextInput].Focus()
+		output := docStyle.Render(fmt.Sprintf(
+			"Confirm deployment to Github? [Yes | No]\n\n%s\n\n%s",
+			m.inputs[deployTextInput].View(),
+			"",
+		) + "\n")
+		return wordwrap.String(output, m.exampleList.Width())
+
 	} else {
 		output := wordwrap.String(docStyle.Render(fmt.Sprintf("Thanks for setting up Abbey! Press ESC or ctrl-c to exit")), m.exampleList.Width())
 		output += wordwrap.String(docStyle.Render(fmt.Sprintf("Repo name is %s!", m.repo)), m.exampleList.Width())
@@ -202,8 +304,8 @@ func (m model) View() string {
 	}
 }
 
-// createCmd represents the create command
-var createCmd = &cobra.Command{
+// initCmd represents the create command
+var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initializes an Abbey example",
 	Long:  ``,
@@ -216,25 +318,25 @@ var createCmd = &cobra.Command{
 			item{title: "azure", desc: "Managing access to groups in Azure AD"},
 		}
 
-		inputs := make([]textinput.Model, 3)
-		inputs[repo] = textinput.New()
-		inputs[repo].Placeholder = "github-username/repo-name"
-		inputs[repo].Focus()
-		inputs[repo].CharLimit = 80
-		inputs[repo].Width = 80
-		inputs[repo].Prompt = ""
+		inputs := make([]textinput.Model, 4)
+		inputs[repoTextInput] = textinput.New()
+		inputs[repoTextInput].Placeholder = "github-username/repo-name"
+		inputs[repoTextInput].Focus()
+		inputs[repoTextInput].CharLimit = 80
+		inputs[repoTextInput].Width = 80
+		inputs[repoTextInput].Prompt = ""
 
-		inputs[path] = textinput.New()
-		inputs[path].Placeholder = "/Users/alice/Documents"
-		inputs[path].CharLimit = 80
-		inputs[path].Width = 80
-		inputs[path].Prompt = ""
+		inputs[pathTextInput] = textinput.New()
+		inputs[pathTextInput].Placeholder = "/Users/alice/Documents"
+		inputs[pathTextInput].CharLimit = 80
+		inputs[pathTextInput].Width = 80
+		inputs[pathTextInput].Prompt = ""
 
-		inputs[reviewer] = textinput.New()
-		inputs[reviewer].Placeholder = "alice@example.com"
-		inputs[reviewer].CharLimit = 80
-		inputs[reviewer].Width = 80
-		inputs[reviewer].Prompt = ""
+		inputs[reviewerTextInput] = textinput.New()
+		inputs[reviewerTextInput].Placeholder = "alice@example.com"
+		inputs[reviewerTextInput].CharLimit = 80
+		inputs[reviewerTextInput].Width = 80
+		inputs[reviewerTextInput].Prompt = ""
 
 		timeExpiryOptions := []list.Item{
 			item{title: "5m", desc: "5 minutes"},
@@ -243,10 +345,22 @@ var createCmd = &cobra.Command{
 			item{title: "7d", desc: "7 days"},
 		}
 
+		inputs[deployTextInput] = textinput.New()
+		inputs[deployTextInput].Placeholder = "Yes"
+		inputs[deployTextInput].CharLimit = 80
+		inputs[deployTextInput].Width = 80
+		inputs[deployTextInput].Prompt = ""
+
 		m := model{
 			exampleList:    list.New(items, list.NewDefaultDelegate(), 0, 0),
 			timeExpiryList: list.New(timeExpiryOptions, list.NewDefaultDelegate(), 0, 0),
-			inputs:         inputs}
+			inputs:         inputs,
+			textReplaced:   false,
+			reviewer:       reviewer,
+			timeExpiry:     timeExpiry,
+			repo:           repo,
+			accessOutput:   accessOutput,
+		}
 
 		m.timeExpiryList.Title = "Time Expiry Options"
 		m.exampleList.Title = "Abbey Examples"
@@ -261,30 +375,25 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(createCmd)
+	rootCmd.AddCommand(initCmd)
 
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
-	// createCmd.PersistentFlags().String("foo", "", "A help for foo")
+	// initCmd.PersistentFlags().String("foo", "", "A help for foo")
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
-	// createCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// initCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
-	//createCmd.Flags().StringVarP(&example, "example", "e", "", "Abbey Example [Name]|[Github-URL] (required)")
-	//createCmd.Flags().BoolVarP(&preReqs, "preReqs", "", false, "Are all the pre-requisites i.e. connecting GitHub, setting up Abbey account done?")
-	//createCmd.Flags().StringVarP(&example, "user", "u", "", "Abbey user email address")
-	//createCmd.Flags().StringVarP(&reviewer, "reviewer", "r", "", "Abbey email address of the reviewer")
-	//createCmd.Flags().StringVarP(&repo, "repo", "", "", "Git repo name")
-	//createCmd.Flags().StringVarP(&githubUsername, "githubUsername", "g", "", "Github Username")
-	//createCmd.Flags().StringVarP(&timeExpiry, "timeExpiry", "t", "", "Time expiry of permissions")
-	//createCmd.Flags().StringVarP(&policyBundle, "policyBundle", "p", "", "Location of Policy Bundle")
-	//createCmd.Flags().StringVarP(&accessOutput, "accessOutput", "a", "access.tf", "Location of Access Output")
-	//createCmd.Flags().StringVarP(&azureUPN, "azureUPN", "", "", "Azure UPN [for use with Azure example]")
+	initCmd.Flags().StringVarP(&reviewer, "reviewer", "r", "", "Abbey email address of the reviewer")
+	initCmd.Flags().StringVarP(&repo, "repo", "", "", "Git repo name in the format github-username/repo-name")
+	initCmd.Flags().StringVarP(&timeExpiry, "timeExpiry", "t", "", "Time expiry of permissions")
+	initCmd.Flags().StringVarP(&accessOutput, "accessOutput", "a", "", "Location of Access Output")
+	initCmd.Flags().StringVarP(&azureUPN, "azureUPN", "", "", "Azure UPN [for use with Azure example]")
 
-	err := createCmd.MarkFlagRequired("example")
+	err := initCmd.MarkFlagRequired("example")
 	if err != nil {
 		return
 	}
