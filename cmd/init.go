@@ -6,9 +6,13 @@ package cmd
 import (
 	"fmt"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/wordwrap"
 	"github.com/spf13/cobra"
+	"log"
+
 	"os"
 )
 
@@ -25,13 +29,17 @@ type PolicyTfTemplate struct {
 }
 
 const (
-	quickstart        = "https://github.com/abbeylabs/abbey-starter-kit-quickstart"
-	googleGroups      = "https://github.com/abbeylabs/google-workspace-starter-kit"
-	gcpIdentity       = "https://github.com/abbeylabs/abbey-starter-kit-gcp-identity"
-	okta              = "https://github.com/abbeylabs/abbey-starter-kit-okta"
-	azure             = "https://github.com/abbeylabs/abbey-starter-kit-azure"
-	snowflake         = "https://github.com/abbeylabs/abbey-starter-kit-snowflake"
-	supported_options = "Supported Options: quickstart, googleGroups, gcpIdentity, okta, azure, snowflake"
+	repo = iota
+	path
+)
+
+const (
+	quickstart   = "https://github.com/abbeylabs/abbey-starter-kit-quickstart"
+	googleGroups = "https://github.com/abbeylabs/google-workspace-starter-kit"
+	gcpIdentity  = "https://github.com/abbeylabs/abbey-starter-kit-gcp-identity"
+	okta         = "https://github.com/abbeylabs/abbey-starter-kit-okta"
+	azure        = "https://github.com/abbeylabs/abbey-starter-kit-azure"
+	snowflake    = "https://github.com/abbeylabs/abbey-starter-kit-snowflake"
 )
 
 var (
@@ -53,10 +61,13 @@ func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
 type model struct {
-	exampleList   list.Model
-	exampleChoice string
-	altscreen     bool
-	repo          string
+	exampleList    list.Model
+	timeExpiryList list.Model
+	exampleChoice  string
+	repo           string
+	inputs         []textinput.Model
+	path           string
+	timeExpiry     string
 }
 
 func (m model) Init() tea.Cmd {
@@ -66,41 +77,85 @@ func (m model) Init() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" {
+		if msg.String() == "ctrl+c" || msg.Type == tea.KeyEsc {
 			return m, tea.Quit
 		}
 		if msg.String() == "enter" {
-			i, ok := m.exampleList.SelectedItem().(item)
-			if ok {
-				m.exampleChoice = i.title
+			if m.exampleChoice == "" {
+				i, ok := m.exampleList.SelectedItem().(item)
+				if ok {
+					m.exampleChoice = i.title
+				}
+			} else if m.repo == "" {
+				i := m.inputs[repo].Value()
+				m.repo = i
+			} else if m.path == "" {
+				i := m.inputs[path].Value()
+				m.path = i
+				return m, pullExampleRepo(m.path, m.repo)
+			} else if m.timeExpiry == "" {
+				i, ok := m.timeExpiryList.SelectedItem().(item)
+				if ok {
+					m.timeExpiry = i.title
+				}
 			}
+
 		}
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
 		m.exampleList.SetSize(msg.Width-h, msg.Height-v)
+		m.timeExpiryList.SetSize(msg.Width-h, msg.Height-v)
 	}
 
 	var cmd tea.Cmd
-	m.exampleList, cmd = m.exampleList.Update(msg)
+	if m.exampleChoice == "" {
+		m.exampleList, cmd = m.exampleList.Update(msg)
+	} else if m.repo == "" {
+		m.inputs[repo], cmd = m.inputs[repo].Update(msg)
+	} else if m.path == "" {
+		m.inputs[path], cmd = m.inputs[path].Update(msg)
+	} else if m.timeExpiry == "" {
+		m.timeExpiryList, cmd = m.timeExpiryList.Update(msg)
+	}
 	return m, cmd
 }
 
-//func pullExampleRepo(example string) tea.Cmd {
-//
-//}
+type statusMsg int
+
+func pullExampleRepo(path string, repoName string) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if path == "" {
+			path, err = os.Getwd()
+			if err != nil {
+				log.Println(err)
+			}
+		}
+
+		//_, err = git.PlainClone(path, false, &git.CloneOptions{
+		//	URL:      "https://github.com/" + repoName,
+		//	Progress: os.Stdout,
+		//})
+		//
+		//if err != nil {
+		//	fmt.Println("Error initializing Abbey project, is Git configured locally?")
+		//}
+
+		return statusMsg(200)
+	}
+}
 
 func (m model) View() string {
 	if m.exampleChoice == "" {
 		return docStyle.Render(m.exampleList.View())
 	} else if m.repo == "" {
-
 		var url string
 		switch m.exampleChoice {
 		case "quickstart":
 			url = quickstart
 		case "google-groups":
 			url = googleGroups
-		case "gcp-identity":
+		case "gcp-groups":
 			url = gcpIdentity
 		case "okta":
 			url = okta
@@ -112,9 +167,28 @@ func (m model) View() string {
 
 		output := docStyle.Render(fmt.Sprintf("Great! You've chosen %s to get started.", m.exampleChoice))
 		output += docStyle.Render(fmt.Sprintf("Navigate to %s to create a repo from the template in your own github account.", url))
-		return output
+		output += docStyle.Render(fmt.Sprintf(
+			"Once you've done that, enter the name of the repo you created: %s\n\n%s",
+			m.inputs[repo].View(),
+			"(ctrl-c to quit)",
+		) + "\n")
+		return wordwrap.String(output, m.exampleList.Width())
+	} else if m.path == "" {
+		m.inputs[path].Focus()
+		output := docStyle.Render(fmt.Sprintf(
+			"Enter in the path the repo will be cloned to, or leave empty to clone into current directory: %s\n\n%s",
+			m.inputs[path].View(),
+			"(ctrl-c to quit)",
+		) + "\n")
+		return wordwrap.String(output, m.exampleList.Width())
+	} else if m.timeExpiry == "" {
+		m.timeExpiryList.ToggleSpinner()
+		return docStyle.Render(m.timeExpiryList.View())
 	} else {
-		return docStyle.Render(fmt.Sprintf("Thanks for setting up Abbey!"))
+		output := wordwrap.String(docStyle.Render(fmt.Sprintf("Thanks for setting up Abbey! Press ESC or ctrl-c to exit")), m.exampleList.Width())
+		output += wordwrap.String(docStyle.Render(fmt.Sprintf("Repo name is %s!", m.repo)), m.exampleList.Width())
+		output += wordwrap.String(docStyle.Render(fmt.Sprintf("Time expiry is %s!", m.timeExpiry)), m.exampleList.Width())
+		return output
 	}
 }
 
@@ -124,7 +198,6 @@ var createCmd = &cobra.Command{
 	Short: "Initializes an Abbey example",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-
 		items := []list.Item{
 			item{title: "quickstart", desc: "Fastest example to get Abbey running"},
 			item{title: "google-groups", desc: "Managing access to groups via Google Workspace"},
@@ -133,10 +206,36 @@ var createCmd = &cobra.Command{
 			item{title: "azure", desc: "Managing access to groups in Azure AD"},
 		}
 
-		m := model{exampleList: list.New(items, list.NewDefaultDelegate(), 0, 0)}
+		inputs := make([]textinput.Model, 3)
+		inputs[repo] = textinput.New()
+		inputs[repo].Placeholder = "github-username/repo-name"
+		inputs[repo].Focus()
+		inputs[repo].CharLimit = 20
+		inputs[repo].Width = 30
+		inputs[repo].Prompt = ""
+
+		inputs[path] = textinput.New()
+		inputs[path].Placeholder = "/Users/alice/Documents"
+		inputs[path].CharLimit = 50
+		inputs[path].Width = 50
+		inputs[path].Prompt = ""
+
+		timeExpiryOptions := []list.Item{
+			item{title: "5m", desc: "5 minutes"},
+			item{title: "1hr", desc: "1 hour"},
+			item{title: "1d", desc: "1 day"},
+			item{title: "7d", desc: "7 days"},
+		}
+
+		m := model{
+			exampleList:    list.New(items, list.NewDefaultDelegate(), 0, 0),
+			timeExpiryList: list.New(timeExpiryOptions, list.NewDefaultDelegate(), 0, 0),
+			inputs:         inputs}
+
+		m.timeExpiryList.Title = "Time Expiry Options"
 		m.exampleList.Title = "Abbey Examples"
 
-		p := tea.NewProgram(m)
+		p := tea.NewProgram(m, tea.WithAltScreen())
 
 		if _, err := p.Run(); err != nil {
 			fmt.Println("Error running program:", err)
