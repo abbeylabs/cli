@@ -9,11 +9,11 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/go-git/go-git/v5"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/spf13/cobra"
-	"log"
-
 	"os"
+	"path/filepath"
 )
 
 type MainTfTemplate struct {
@@ -94,7 +94,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.path == "" {
 				i := m.inputs[path].Value()
 				m.path = i
-				return m, pullExampleRepo(m.path, m.repo)
+				var err error
+				if m.path == "" {
+					ex, err := os.Executable()
+					if err != nil {
+						panic(err)
+					}
+					m.path = filepath.Dir(ex)
+				}
+
+				url := "https://github.com/" + m.repo
+				_, err = git.PlainClone(m.path+"/"+m.exampleChoice, false, &git.CloneOptions{
+					URL:      url,
+					Progress: os.Stdout,
+				})
+
+				if err != nil {
+					fmt.Print(fmt.Sprintf("Error initializing Abbey project, is Git configured locally?\nError: %v", err))
+				}
 			} else if m.timeExpiry == "" {
 				i, ok := m.timeExpiryList.SelectedItem().(item)
 				if ok {
@@ -128,29 +145,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 type statusMsg int
-
-func pullExampleRepo(path string, repoName string) tea.Cmd {
-	return func() tea.Msg {
-		var err error
-		if path == "" {
-			path, err = os.Getwd()
-			if err != nil {
-				log.Println(err)
-			}
-		}
-
-		//_, err = git.PlainClone(path, false, &git.CloneOptions{
-		//	URL:      "https://github.com/" + repoName,
-		//	Progress: os.Stdout,
-		//})
-		//
-		//if err != nil {
-		//	fmt.Println("Error initializing Abbey project, is Git configured locally?")
-		//}
-
-		return statusMsg(200)
-	}
-}
 
 func (m model) View() string {
 	if m.exampleChoice == "" {
@@ -201,6 +195,7 @@ func (m model) View() string {
 	} else {
 		output := wordwrap.String(docStyle.Render(fmt.Sprintf("Thanks for setting up Abbey! Press ESC or ctrl-c to exit")), m.exampleList.Width())
 		output += wordwrap.String(docStyle.Render(fmt.Sprintf("Repo name is %s!", m.repo)), m.exampleList.Width())
+		output += wordwrap.String(docStyle.Render(fmt.Sprintf("Path is %s!", m.path)), m.exampleList.Width())
 		output += wordwrap.String(docStyle.Render(fmt.Sprintf("Time expiry is %s!", m.timeExpiry)), m.exampleList.Width())
 		output += wordwrap.String(docStyle.Render(fmt.Sprintf("Reviewer email address is %s!", m.reviewer)), m.exampleList.Width())
 		return output
@@ -225,20 +220,20 @@ var createCmd = &cobra.Command{
 		inputs[repo] = textinput.New()
 		inputs[repo].Placeholder = "github-username/repo-name"
 		inputs[repo].Focus()
-		inputs[repo].CharLimit = 20
-		inputs[repo].Width = 30
+		inputs[repo].CharLimit = 80
+		inputs[repo].Width = 80
 		inputs[repo].Prompt = ""
 
 		inputs[path] = textinput.New()
 		inputs[path].Placeholder = "/Users/alice/Documents"
-		inputs[path].CharLimit = 50
-		inputs[path].Width = 50
+		inputs[path].CharLimit = 80
+		inputs[path].Width = 80
 		inputs[path].Prompt = ""
 
 		inputs[reviewer] = textinput.New()
 		inputs[reviewer].Placeholder = "alice@example.com"
-		inputs[reviewer].CharLimit = 30
-		inputs[reviewer].Width = 40
+		inputs[reviewer].CharLimit = 80
+		inputs[reviewer].Width = 80
 		inputs[reviewer].Prompt = ""
 
 		timeExpiryOptions := []list.Item{
