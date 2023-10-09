@@ -120,8 +120,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.path = m.path + "/" + m.exampleChoice
 				url := "https://github.com/" + m.repo
 				_, err = git.PlainClone(m.path, false, &git.CloneOptions{
-					URL:      url,
-					Progress: os.Stdout,
+					URL: url,
 				})
 
 				if err != nil {
@@ -144,10 +143,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					_, _ = worktree.Add("main.tf")
 					_, _ = worktree.Add("policies/common/common.rego")
 
-					commit, _ := worktree.Commit("example go-git commit", &git.CommitOptions{})
+					commit, _ := worktree.Commit("Configuring Abbey via CLI", &git.CommitOptions{})
 
 					_, _ = repo.CommitObject(commit)
-					//_ = repo.Push(&git.PushOptions{})
+					_ = repo.Push(&git.PushOptions{})
 				}
 			}
 		}
@@ -286,6 +285,7 @@ func (m model) View() string {
 		) + "\n")
 		return wordwrap.String(output, m.exampleList.Width())
 	} else if m.deployed == "" {
+		tea.ClearScreen()
 		m.inputs[deployTextInput].Focus()
 		output := docStyle.Render(fmt.Sprintf(
 			"Confirm deployment to Github? [Yes | No]\n\n%s\n\n%s",
