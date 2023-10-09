@@ -31,6 +31,7 @@ type PolicyTfTemplate struct {
 const (
 	repo = iota
 	path
+	reviewer
 )
 
 const (
@@ -68,6 +69,7 @@ type model struct {
 	inputs         []textinput.Model
 	path           string
 	timeExpiry     string
+	reviewer       string
 }
 
 func (m model) Init() tea.Cmd {
@@ -98,9 +100,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if ok {
 					m.timeExpiry = i.title
 				}
+			} else if m.reviewer == "" {
+				i := m.inputs[reviewer].Value()
+				m.reviewer = i
 			}
-
 		}
+
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
 		m.exampleList.SetSize(msg.Width-h, msg.Height-v)
@@ -116,6 +121,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.inputs[path], cmd = m.inputs[path].Update(msg)
 	} else if m.timeExpiry == "" {
 		m.timeExpiryList, cmd = m.timeExpiryList.Update(msg)
+	} else if m.reviewer == "" {
+		m.inputs[reviewer], cmd = m.inputs[reviewer].Update(msg)
 	}
 	return m, cmd
 }
@@ -182,12 +189,20 @@ func (m model) View() string {
 		) + "\n")
 		return wordwrap.String(output, m.exampleList.Width())
 	} else if m.timeExpiry == "" {
-		m.timeExpiryList.ToggleSpinner()
 		return docStyle.Render(m.timeExpiryList.View())
+	} else if m.reviewer == "" {
+		m.inputs[reviewer].Focus()
+		output := docStyle.Render(fmt.Sprintf(
+			"What's the email address you used for Abbey?\n\n%s\n\n%s",
+			m.inputs[reviewer].View(),
+			"(ctrl-c to quit)",
+		) + "\n")
+		return wordwrap.String(output, m.exampleList.Width())
 	} else {
 		output := wordwrap.String(docStyle.Render(fmt.Sprintf("Thanks for setting up Abbey! Press ESC or ctrl-c to exit")), m.exampleList.Width())
 		output += wordwrap.String(docStyle.Render(fmt.Sprintf("Repo name is %s!", m.repo)), m.exampleList.Width())
 		output += wordwrap.String(docStyle.Render(fmt.Sprintf("Time expiry is %s!", m.timeExpiry)), m.exampleList.Width())
+		output += wordwrap.String(docStyle.Render(fmt.Sprintf("Reviewer email address is %s!", m.reviewer)), m.exampleList.Width())
 		return output
 	}
 }
@@ -219,6 +234,12 @@ var createCmd = &cobra.Command{
 		inputs[path].CharLimit = 50
 		inputs[path].Width = 50
 		inputs[path].Prompt = ""
+
+		inputs[reviewer] = textinput.New()
+		inputs[reviewer].Placeholder = "alice@example.com"
+		inputs[reviewer].CharLimit = 30
+		inputs[reviewer].Width = 40
+		inputs[reviewer].Prompt = ""
 
 		timeExpiryOptions := []list.Item{
 			item{title: "5m", desc: "5 minutes"},
