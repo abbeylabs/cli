@@ -34,6 +34,7 @@ const (
 	repoTextInput = iota
 	pathTextInput
 	reviewerTextInput
+	tokenTextInput
 	deployTextInput
 )
 
@@ -84,6 +85,7 @@ type model struct {
 	textReplaced   bool
 	deployed       string
 	accessOutput   string
+	tokenSetup     bool
 }
 
 func (m model) Init() tea.Cmd {
@@ -134,6 +136,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.reviewer == "" {
 				i := m.inputs[reviewerTextInput].Value()
 				m.reviewer = i
+			} else if !m.tokenSetup {
+				i := m.inputs[tokenTextInput].Value()
+				if strings.ToLower(i) == "yes" || strings.ToLower(i) == "y" {
+					m.tokenSetup = true
+				}
 			} else if m.deployed == "" {
 				i := m.inputs[deployTextInput].Value()
 				m.deployed = i
@@ -231,6 +238,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.timeExpiryList, cmd = m.timeExpiryList.Update(msg)
 	} else if m.reviewer == "" {
 		m.inputs[reviewerTextInput], cmd = m.inputs[reviewerTextInput].Update(msg)
+	} else if !m.tokenSetup {
+		m.inputs[tokenTextInput], cmd = m.inputs[tokenTextInput].Update(msg)
 	} else if m.deployed == "" {
 		m.inputs[deployTextInput], cmd = m.inputs[deployTextInput].Update(msg)
 	}
@@ -284,8 +293,18 @@ func (m model) View() string {
 			"",
 		) + "\n")
 		return wordwrap.String(output, m.exampleList.Width())
+	} else if !m.tokenSetup {
+		m.inputs[tokenTextInput].Focus()
+		output := docStyle.Render(fmt.Sprintf("Before you deploy Abbey, you must set up Abbey tokens in Github."))
+		output += docStyle.Render(fmt.Sprintf("Follow instructions at https://docs.abbey.io/product/deploying-your-grant-kit, and return here to confirm once done."))
+		output += docStyle.Render(fmt.Sprintf(
+			"Have the Abbey tokens been configured? [Yes | No]\n\n%s\n\n%s",
+			m.inputs[tokenTextInput].View(),
+			"",
+		) + "\n")
+		return wordwrap.String(output, m.exampleList.Width())
+
 	} else if m.deployed == "" {
-		tea.ClearScreen()
 		m.inputs[deployTextInput].Focus()
 		output := docStyle.Render(fmt.Sprintf(
 			"Confirm deployment to Github? [Yes | No]\n\n%s\n\n%s",
@@ -318,7 +337,7 @@ var initCmd = &cobra.Command{
 			item{title: "azure", desc: "Managing access to groups in Azure AD"},
 		}
 
-		inputs := make([]textinput.Model, 4)
+		inputs := make([]textinput.Model, 7)
 		inputs[repoTextInput] = textinput.New()
 		inputs[repoTextInput].Placeholder = "github-username/repo-name"
 		inputs[repoTextInput].Focus()
@@ -344,6 +363,12 @@ var initCmd = &cobra.Command{
 			item{title: "1d", desc: "1 day"},
 			item{title: "7d", desc: "7 days"},
 		}
+
+		inputs[tokenTextInput] = textinput.New()
+		inputs[tokenTextInput].Placeholder = "Yes"
+		inputs[tokenTextInput].CharLimit = 80
+		inputs[tokenTextInput].Width = 80
+		inputs[tokenTextInput].Prompt = ""
 
 		inputs[deployTextInput] = textinput.New()
 		inputs[deployTextInput].Placeholder = "Yes"
