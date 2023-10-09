@@ -19,11 +19,12 @@ import (
 )
 
 type MainTfTemplate struct {
-	Reviewer     string
-	PolicyBundle string
-	AccessOutput string
-	AbbeyEmail   string
-	AzureUPN     string
+	Reviewer               string
+	PolicyBundle           string
+	AccessOutput           string
+	AbbeyEmail             string
+	AzureUPN               string
+	AbbeySnowflakeUsername string
 }
 
 type PolicyTfTemplate struct {
@@ -177,8 +178,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				PolicyBundle: "github://" + m.repo + "/policies",
 				AccessOutput: m.accessOutput,
 				// hacky fix since Go recognizes this as a template value
-				AbbeyEmail: "{{ .data.system.abbey.identities.abbey.email }}",
-				AzureUPN:   azureUPN,
+				AbbeyEmail:             "{{ .data.system.abbey.identities.abbey.email }}",
+				AzureUPN:               azureUPN,
+				AbbeySnowflakeUsername: "{{ .data.system.abbey.identities.snowflake.username }}",
 			}
 
 			f, err := os.Create(m.path + "/" + mainFile)

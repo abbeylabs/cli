@@ -37,7 +37,6 @@ resource "google_cloud_identity_group" "abbey-gcp-quickstart" {
   display_name         = "abbey-gcp-quickstart"
   initial_group_config = "WITH_INITIAL_OWNER"
 
-  # Replace with your customer ID
   parent = "customers/${local.gcp_customer_id}"
 
   group_key {
@@ -60,20 +59,20 @@ resource "abbey_grant_kit" "abbey_emergency" {
     steps = [
       {
         reviewers = {
-          one_of = ["security@abbey.io"] # CHANGEME
+          one_of = ["{{ .Reviewer }}"]
         }
       }
     ]
   }
 
   policies = [
-    { bundle = "github://abbeylabs/infra/policies" } # CHANGEME
+    { bundle = "{{ .PolicyBundle}}" }
   ]
 
   output = {
     # Replace with your own path pointing to where you want your access changes to manifest.
     # Path is an RFC 3986 URI, such as `github://{organization}/{repo}/path/to/file.tf`.
-    location = "github://abbeylabs/infra/access.tf" # CHANGEME
+    location = "{{ .AccessOutput }}"
     append = <<-EOT
       resource "google_cloud_identity_group_membership" "member" {
         group    = google_cloud_identity_group.abbey_emergency_group.id

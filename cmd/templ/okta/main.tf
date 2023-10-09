@@ -41,7 +41,7 @@ resource "abbey_grant_kit" "okta_group_has_nice_things" {
     steps = [
       {
         reviewers = {
-          one_of = ["replace-me@example.com"] # CHANGEME
+          one_of = ["{{ .Reviewer }}"]
         }
       }
     ]
@@ -50,7 +50,7 @@ resource "abbey_grant_kit" "okta_group_has_nice_things" {
   output = {
     # Replace with your own path pointing to where you want your access changes to manifest.
     # Path is an RFC 3986 URI, such as `github://{organization}/{repo}/path/to/file.tf`.
-    location = "github://replace-me-with-organization/replace-me-with-repo/access.tf" # CHANGEME
+    location = "{{ .AccessOutput }}" # CHANGEME
     append = <<-EOT
       resource "okta_user_group_memberships" "has_nice_things__{{ .data.system.abbey.identities.okta.user_id }}" { # {{ .data.system.abbey.identities.abbey.email }}
         user_id = "{{ .data.system.abbey.identities.okta.user_id }}"
@@ -61,13 +61,14 @@ resource "abbey_grant_kit" "okta_group_has_nice_things" {
 }
 
 resource "abbey_identity" "user_1" {
-  abbey_account = "replace-me@example.com"
+  abbey_account = "{{ .Reviewer }}"
   source = "okta"
   metadata = jsonencode(
     {
-      user_id = "00uReplaceWithOktaUserId" #CHANGEME
+      user_id = "{{ .OktaUserID }}"
     }
   )
+  name = "{{ .Reviewer }}"
 }
 
 data "okta_group" "has_nice_things" {

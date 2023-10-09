@@ -116,7 +116,7 @@ resource "abbey_grant_kit" "role__pii_readonly" {
     append = <<-EOT
       resource "snowflake_role_grants" "pii_readonly__{{ .data.system.abbey.identities.snowflake.username }}" {
         role_name = "${data.snowflake_role.pii_readonly_role.name}"
-        users     = ["{{ .data.system.abbey.identities.snowflake.username }}"]
+        users     = ["{{ .AbbeySnowflakeUsername }}"]
       }
     EOT
   }
