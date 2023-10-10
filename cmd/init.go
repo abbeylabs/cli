@@ -25,6 +25,8 @@ type MainTfTemplate struct {
 	AbbeyEmail             string
 	AzureUPN               string
 	AbbeySnowflakeUsername string
+	GoogleCustomerId       string
+	GoogleWorkspaceGroup   string
 }
 
 type PolicyTfTemplate struct {
@@ -37,6 +39,9 @@ const (
 	reviewerTextInput
 	tokenTextInput
 	deployTextInput
+	azureUpnTextInput
+	googleWorkspaceGroupTextInput
+	googleCustomerIdTextInput
 )
 
 const (
@@ -49,11 +54,13 @@ const (
 )
 
 var (
-	reviewer     string
-	timeExpiry   string
-	accessOutput string
-	repo         string
-	azureUPN     string
+	reviewer             string
+	timeExpiry           string
+	accessOutput         string
+	repo                 string
+	azureUPN             string
+	googleWorkspaceGroup string
+	googleCustomerId     string
 )
 
 var (
@@ -75,18 +82,21 @@ func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
 type model struct {
-	exampleList    list.Model
-	timeExpiryList list.Model
-	exampleChoice  string
-	repo           string
-	inputs         []textinput.Model
-	path           string
-	timeExpiry     string
-	reviewer       string
-	textReplaced   bool
-	deployed       string
-	accessOutput   string
-	tokenSetup     bool
+	exampleList          list.Model
+	timeExpiryList       list.Model
+	exampleChoice        string
+	repo                 string
+	inputs               []textinput.Model
+	path                 string
+	timeExpiry           string
+	reviewer             string
+	textReplaced         bool
+	deployed             string
+	accessOutput         string
+	tokenSetup           bool
+	azureUPN             string
+	googleWorkspaceGroup string
+	googleCustomerId     string
 }
 
 func (m model) Init() tea.Cmd {
@@ -142,6 +152,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if strings.ToLower(i) == "yes" || strings.ToLower(i) == "y" {
 					m.tokenSetup = true
 				}
+			} else if m.exampleChoice == "azure" && m.azureUPN == "" {
+				i := m.inputs[azureUpnTextInput].Value()
+				m.azureUPN = i
+			} else if m.exampleChoice == "google-groups" && m.googleWorkspaceGroup == "" {
+				i := m.inputs[googleWorkspaceGroupTextInput].Value()
+				m.googleWorkspaceGroup = i
+			} else if m.exampleChoice == "google-groups" && m.googleCustomerId == "" {
+				i := m.inputs[googleCustomerIdTextInput].Value()
+				m.googleCustomerId = i
 			} else if m.deployed == "" {
 				i := m.inputs[deployTextInput].Value()
 				m.deployed = i
@@ -179,8 +198,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				AccessOutput: m.accessOutput,
 				// hacky fix since Go recognizes this as a template value
 				AbbeyEmail:             "{{ .data.system.abbey.identities.abbey.email }}",
-				AzureUPN:               azureUPN,
+				AzureUPN:               m.azureUPN,
 				AbbeySnowflakeUsername: "{{ .data.system.abbey.identities.snowflake.username }}",
+				GoogleCustomerId:       m.googleCustomerId,
+				GoogleWorkspaceGroup:   m.googleWorkspaceGroup,
 			}
 
 			f, err := os.Create(m.path + "/" + mainFile)
@@ -242,6 +263,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.inputs[reviewerTextInput], cmd = m.inputs[reviewerTextInput].Update(msg)
 	} else if !m.tokenSetup {
 		m.inputs[tokenTextInput], cmd = m.inputs[tokenTextInput].Update(msg)
+	} else if m.exampleChoice == "azure" && m.azureUPN == "" {
+		m.inputs[azureUpnTextInput], cmd = m.inputs[azureUpnTextInput].Update(msg)
+	} else if m.exampleChoice == "google-groups" && m.googleWorkspaceGroup == "" {
+		m.inputs[googleWorkspaceGroupTextInput], cmd = m.inputs[googleWorkspaceGroupTextInput].Update(msg)
+	} else if m.exampleChoice == "google-groups" && m.googleCustomerId == "" {
+		m.inputs[googleCustomerIdTextInput], cmd = m.inputs[googleCustomerIdTextInput].Update(msg)
 	} else if m.deployed == "" {
 		m.inputs[deployTextInput], cmd = m.inputs[deployTextInput].Update(msg)
 	}
@@ -305,7 +332,33 @@ func (m model) View() string {
 			"",
 		) + "\n")
 		return wordwrap.String(output, m.exampleList.Width())
-
+	} else if m.exampleChoice == "azure" && m.azureUPN == "" {
+		m.inputs[azureUpnTextInput].Focus()
+		output := docStyle.Render(fmt.Sprintf(
+			"What's your Azure UPN?\n\n%s\n\n%s",
+			m.inputs[azureUpnTextInput].View(),
+			"",
+		) + "\n")
+		output += docStyle.Render(fmt.Sprintf("You can get your Azure UPN through the Azure User Portal https://portal.azure.com/."))
+		return wordwrap.String(output, m.exampleList.Width())
+	} else if m.exampleChoice == "google-groups" && m.googleWorkspaceGroup == "" {
+		m.inputs[googleWorkspaceGroupTextInput].Focus()
+		output := docStyle.Render(fmt.Sprintf(
+			"What would you like the name of your google workspace group to be?\n\n%s\n\n%s",
+			m.inputs[googleWorkspaceGroupTextInput].View(),
+			"",
+		) + "\n")
+		output += docStyle.Render(fmt.Sprintf("Must be in the format of <name>@<your-domain>"))
+		return wordwrap.String(output, m.exampleList.Width())
+	} else if m.exampleChoice == "google-groups" && m.googleCustomerId == "" {
+		m.inputs[googleCustomerIdTextInput].Focus()
+		output := docStyle.Render(fmt.Sprintf(
+			"What's your Google Customer ID?\n\n%s\n\n%s",
+			m.inputs[googleCustomerIdTextInput].View(),
+			"",
+		) + "\n")
+		output += docStyle.Render(fmt.Sprintf("You can get your customer ID from the Google Workspace Admin Console: https://admin.google.com/u/0/ac/accountsettings"))
+		return wordwrap.String(output, m.exampleList.Width())
 	} else if m.deployed == "" {
 		m.inputs[deployTextInput].Focus()
 		output := docStyle.Render(fmt.Sprintf(
@@ -314,7 +367,6 @@ func (m model) View() string {
 			"",
 		) + "\n")
 		return wordwrap.String(output, m.exampleList.Width())
-
 	} else {
 		output := wordwrap.String(docStyle.Render(fmt.Sprintf("Thanks for setting up Abbey! Press ESC or ctrl-c to exit")), m.exampleList.Width())
 		output += wordwrap.String(docStyle.Render(fmt.Sprintf("Repo name is %s!", m.repo)), m.exampleList.Width())
@@ -378,6 +430,12 @@ var initCmd = &cobra.Command{
 		inputs[deployTextInput].Width = 80
 		inputs[deployTextInput].Prompt = ""
 
+		inputs[azureUpnTextInput] = textinput.New()
+		inputs[azureUpnTextInput].Placeholder = "alice.io#EXT#@alice.onmicrosoft.com"
+		inputs[azureUpnTextInput].CharLimit = 80
+		inputs[azureUpnTextInput].Width = 80
+		inputs[azureUpnTextInput].Prompt = ""
+
 		m := model{
 			exampleList:    list.New(items, list.NewDefaultDelegate(), 0, 0),
 			timeExpiryList: list.New(timeExpiryOptions, list.NewDefaultDelegate(), 0, 0),
@@ -387,6 +445,7 @@ var initCmd = &cobra.Command{
 			timeExpiry:     timeExpiry,
 			repo:           repo,
 			accessOutput:   accessOutput,
+			azureUPN:       azureUPN,
 		}
 
 		m.timeExpiryList.Title = "Time Expiry Options"

@@ -19,7 +19,7 @@ locals {
   # Replace if your abbey email doesn't match your Google User email
   # Example: gcp_member = "your-username@gmail.com"
   google_group_member_email = "{{ .data.system.abbey.identities.abbey.email }}"
-  google_customer_id = "C1111111" # CHANGEME
+  google_customer_id = "{{ .GoogleCustomerId }}" # CHANGEME
 }
 
 provider "googleworkspace" {
@@ -32,7 +32,7 @@ provider "abbey" {
 }
 
 resource "googleworkspace_group" "google_workspace_demo" {
-  email       = "replace-me@example.com" # CHANGEME
+  email       = "{{ .GoogleWorkspaceGroup }}" # CHANGEME
 }
 
 resource "abbey_grant_kit" "googleworkspace" {

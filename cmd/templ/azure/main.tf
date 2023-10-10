@@ -26,7 +26,7 @@ provider "abbey" {
 }
 
 resource "azuread_group" "quickstart_group" {
-  display_name = "quickstart_group"
+  display_name = "abbey_demo"
   security_enabled = true
 }
 
