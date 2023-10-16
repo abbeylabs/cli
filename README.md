@@ -46,7 +46,7 @@ Flags:
 
 ## Need help?
 If you have any questions along the way, feel free to get in touch - we'd love to chat with you
-* Join our community Slack 
-* Email us at hello@abbey.io
-* Post a Github Issue
+* Join our [Slack](https://join.slack.com/t/abbey-io/shared_invite/zt-255094l05-wtoSqqAuGJtI5BnpNZl73Q) 
+* Email us at [hello@abbey.io](mailto:hello@abbey.io)
+* Post a [Github Issue](https://github.com/abbeylabs/cli/issues/new)
 
