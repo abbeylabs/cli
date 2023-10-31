@@ -44,6 +44,8 @@ Flags:
 
 ```
 
+![abbey_cli_short](https://github.com/abbeylabs/cli/assets/8519403/a4df3fc9-a188-4665-959f-18e78bb507da)
+
 ## Need help?
 If you have any questions along the way, feel free to get in touch - we'd love to chat with you
 * Join our [Slack](https://join.slack.com/t/abbey-io/shared_invite/zt-255094l05-wtoSqqAuGJtI5BnpNZl73Q) 
